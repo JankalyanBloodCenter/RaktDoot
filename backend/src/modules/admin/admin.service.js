@@ -69,6 +69,11 @@ async function createUser({ name, email, password, role, phone, vehicle_type, ve
   if (role === 'driver') {
     dbRun(`INSERT OR IGNORE INTO driver_locations (driver_id, lat, lng, speed, heading, status) VALUES (?, 0, 0, 0, 0, 'offline')`, [id]);
   }
+  const created = dbGet('SELECT * FROM users WHERE id = ?', [id]);
+  try {
+    const { syncUser } = require('../../db/supabase_sync');
+    syncUser(created);
+  } catch (_) {}
   return dbGet('SELECT id, name, email, role, phone, avatar_color, vehicle_type, vehicle_number, is_active, created_at FROM users WHERE id = ?', [id]);
 }
 
@@ -100,6 +105,11 @@ async function updateUser(userId, { name, email, phone, role, is_active, passwor
   if (updates.length === 0) { const err = new Error('No fields to update.'); err.status = 400; throw err; }
   params.push(userId);
   dbRun(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+  const updated = dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+  try {
+    const { syncUser } = require('../../db/supabase_sync');
+    syncUser(updated);
+  } catch (_) {}
   return dbGet('SELECT id, name, email, role, phone, avatar_color, vehicle_type, vehicle_number, is_active, created_at FROM users WHERE id = ?', [userId]);
 }
 

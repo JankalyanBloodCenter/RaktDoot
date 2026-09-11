@@ -306,11 +306,21 @@ async function syncUser(u) {
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         email = EXCLUDED.email,
+        password_hash = EXCLUDED.password_hash,
         role = EXCLUDED.role,
         phone = EXCLUDED.phone,
         vehicle_type = EXCLUDED.vehicle_type,
-        vehicle_number = EXCLUDED.vehicle_number
+        vehicle_number = EXCLUDED.vehicle_number,
+        is_active = EXCLUDED.is_active
     `, [u.id, u.name, u.email, u.password_hash, u.role, u.phone, u.avatar_color, u.push_token, u.vehicle_type, u.vehicle_number, u.is_active]);
+
+    if (u.role === 'driver') {
+      await p.query(`
+        INSERT INTO driver_locations (driver_id, lat, lng, speed, heading, status)
+        VALUES ($1, 0, 0, 0, 0, 'offline')
+        ON CONFLICT (driver_id) DO NOTHING
+      `, [u.id]);
+    }
   } catch (err) {
     console.warn('[Supabase Sync] syncUser error:', err.message);
   }

@@ -3,10 +3,10 @@ import { Platform } from 'react-native';
 // Default backend URL: dynamically uses current origin on web or live cloud Render backend
 export const DEFAULT_SERVER_URL = (typeof window !== 'undefined' && window.location?.origin && window.location.origin !== 'null' && !window.location.origin.includes(':8081'))
   ? window.location.origin
-  : 'https://raktdoot-backend-hba8.onrender.com';
+  : 'https://raktdoot-backend-g8fz.onrender.com';
 
 export const PRESET_SERVER_URLS = [
-  { label: 'Cloud Live (Render)', url: 'https://raktdoot-backend-hba8.onrender.com' },
+  { label: 'Cloud Live (Render)', url: 'https://raktdoot-backend-g8fz.onrender.com' },
   { label: 'Local PC Wi-Fi (192.168.1.107:5000)', url: 'http://192.168.1.107:5000' },
   { label: 'Localhost (5000)', url: 'http://localhost:5000' },
   { label: 'Android Emulator (10.0.2.2)', url: 'http://10.0.2.2:5000' },
