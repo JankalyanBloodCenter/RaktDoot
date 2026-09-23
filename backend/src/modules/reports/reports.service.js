@@ -105,7 +105,13 @@ function getDriverReport({ driverId = 'all', period = 'last_30_days', startDate 
     workSql += ' AND wl.driver_id = ?';
     workParams.push(targetDriver.id);
   }
-  workSql += ' ORDER BY wl.completed_at DESC';
+  workSql += `
+    GROUP BY CASE
+      WHEN wl.assignment_id IS NOT NULL AND wl.assignment_id != '' THEN wl.assignment_id
+      ELSE wl.driver_id || '_' || wl.destination_id || '_' || substr(wl.completed_at, 1, 16)
+    END
+    ORDER BY wl.completed_at DESC
+  `;
   const workLogs = dbAll(workSql, workParams);
 
   // Query issues reported
@@ -264,7 +270,13 @@ function getHospitalReport({ destinationId = 'all', period = 'last_30_days', sta
     workSql += ' AND wl.destination_id = ?';
     workParams.push(targetHospital.id);
   }
-  workSql += ' ORDER BY wl.completed_at DESC';
+  workSql += `
+    GROUP BY CASE
+      WHEN wl.assignment_id IS NOT NULL AND wl.assignment_id != '' THEN wl.assignment_id
+      ELSE wl.driver_id || '_' || wl.destination_id || '_' || substr(wl.completed_at, 1, 16)
+    END
+    ORDER BY wl.completed_at DESC
+  `;
   const deliveries = dbAll(workSql, workParams);
 
   // Query all assignments (including pending/in_progress)

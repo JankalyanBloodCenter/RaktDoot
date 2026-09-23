@@ -56,7 +56,15 @@ export default function ManagerWorkLogsPage() {
     if (!socket) return;
     const handleWorkLogAdded = ({ workLog }) => {
       if (workLog) {
-        setLogs(prev => [workLog, ...prev.filter(l => l.id !== workLog.id)]);
+        setLogs(prev => {
+          const exists = prev.some(l =>
+            l.id === workLog.id ||
+            (workLog.assignment_id && l.assignment_id === workLog.assignment_id) ||
+            (l.driver_id === workLog.driver_id && l.destination_id === workLog.destination_id && Math.abs(new Date(l.completed_at || l.created_at || Date.now()) - new Date(workLog.completed_at || workLog.created_at || Date.now())) < 30000)
+          );
+          if (exists) return prev;
+          return [workLog, ...prev];
+        });
         setStats(prev => ({
           ...prev,
           total_completed: (Number(prev.total_completed) || 0) + 1,
@@ -72,20 +80,31 @@ export default function ManagerWorkLogsPage() {
     };
   }, [socket]);
 
-  // Filtered logs
+  // Filtered logs with deduplication
   const filteredLogs = useMemo(() => {
+    const seen = new Set();
     return logs.filter(log => {
       if (urgencyFilter !== 'all' && log.urgency !== urgencyFilter) {
         return false;
       }
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase().trim();
-      return (
-        (log.destination_name && log.destination_name.toLowerCase().includes(q)) ||
-        (log.driver_name && log.driver_name.toLowerCase().includes(q)) ||
-        (log.notes && log.notes.toLowerCase().includes(q)) ||
-        (log.destination_address && log.destination_address.toLowerCase().includes(q))
-      );
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matches = (
+          (log.destination_name && log.destination_name.toLowerCase().includes(q)) ||
+          (log.driver_name && log.driver_name.toLowerCase().includes(q)) ||
+          (log.notes && log.notes.toLowerCase().includes(q)) ||
+          (log.destination_address && log.destination_address.toLowerCase().includes(q))
+        );
+        if (!matches) return false;
+      }
+
+      const key = (log.assignment_id && log.assignment_id.trim() !== '')
+        ? `assign-${log.assignment_id}`
+        : `${log.driver_id || log.driver_name}-${log.destination_id || log.destination_name}-${(log.completed_at || log.created_at || '').slice(0, 16)}`;
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
   }, [logs, urgencyFilter, searchQuery]);
 

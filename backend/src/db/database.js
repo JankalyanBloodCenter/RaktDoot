@@ -58,6 +58,20 @@ function initDB() {
     `);
   } catch (_) {}
 
+  try {
+    db.run(`
+      DELETE FROM work_logs
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM work_logs
+        GROUP BY CASE
+          WHEN assignment_id IS NOT NULL AND assignment_id != '' THEN assignment_id
+          ELSE driver_id || '_' || destination_id || '_' || substr(completed_at, 1, 16)
+        END
+      )
+    `);
+  } catch (_) {}
+
   // Work Logs Table for completed delivery & collection task records
   try {
     db.run(`

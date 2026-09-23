@@ -38,7 +38,13 @@ function getAllWorkLogs({ driver_id, destination_id, urgency, search, limit = 10
     params.push(term, term, term, term);
   }
 
-  sql += ' ORDER BY wl.completed_at DESC LIMIT ?';
+  sql += `
+    GROUP BY CASE
+      WHEN wl.assignment_id IS NOT NULL AND wl.assignment_id != '' THEN wl.assignment_id
+      ELSE wl.driver_id || '_' || wl.destination_id || '_' || substr(wl.completed_at, 1, 16)
+    END
+    ORDER BY wl.completed_at DESC LIMIT ?
+  `;
   params.push(parseInt(limit) || 100);
 
   return dbAll(sql, params);
@@ -80,11 +86,23 @@ function createWorkLog({
   duration_mins = 0,
   distance_km = 0,
 }) {
-  // Prevent duplicate work logs for the same completed assignment
+  // 1. Prevent duplicate work logs for the same completed assignment
   if (assignment_id) {
     const existing = dbGet('SELECT id FROM work_logs WHERE assignment_id = ?', [assignment_id]);
     if (existing) {
       return getWorkLogById(existing.id);
+    }
+  }
+
+  // 2. Prevent rapid duplicate work logs within 30 seconds for the same driver & destination
+  if (driver_id && destination_id) {
+    const recent = dbGet(`
+      SELECT id FROM work_logs
+      WHERE driver_id = ? AND destination_id = ?
+        AND created_at >= datetime('now', '-30 seconds')
+    `, [driver_id, destination_id]);
+    if (recent) {
+      return getWorkLogById(recent.id);
     }
   }
 
@@ -125,13 +143,21 @@ function createWorkLog({
  */
 function getWorkLogStats() {
   const totals = dbGet(`
+    WITH unique_logs AS (
+      SELECT *
+      FROM work_logs
+      GROUP BY CASE
+        WHEN assignment_id IS NOT NULL AND assignment_id != '' THEN assignment_id
+        ELSE driver_id || '_' || destination_id || '_' || substr(completed_at, 1, 16)
+      END
+    )
     SELECT
       COUNT(*) AS total_completed,
       COALESCE(SUM(duration_mins), 0) AS total_duration_mins,
       COUNT(DISTINCT driver_id) AS active_drivers,
       SUM(CASE WHEN urgency = 'emergency' THEN 1 ELSE 0 END) AS emergency_runs,
       SUM(CASE WHEN urgency = 'urgent' THEN 1 ELSE 0 END) AS urgent_runs
-    FROM work_logs
+    FROM unique_logs
   `) || { total_completed: 0, total_duration_mins: 0, active_drivers: 0, emergency_runs: 0, urgent_runs: 0 };
 
   return totals;
