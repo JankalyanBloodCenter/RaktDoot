@@ -27,7 +27,9 @@ export default function ManagerNotificationsPage() {
     const list = filterUnread ? notifications.filter((n) => !n.is_read) : notifications;
     const seen = new Set();
     return list.filter((n) => {
-      const key = (n.assignment_id && n.type) ? `${n.assignment_id}-${n.type}` : (n.id || `${n.message}-${n.created_at}`);
+      const key = (n.assignment_id && n.type)
+        ? `${n.assignment_id}-${n.type}`
+        : `${n.driver_id || n.driver_name}-${n.destination_id || n.destination_name}-${n.type || 'work_completed'}-${(n.message || '').replace(/\s+/g, ' ').trim()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

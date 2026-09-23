@@ -95,27 +95,14 @@ function ManagerMapContent() {
   useEffect(() => {
     if (!socket) return;
 
-    // Work completed alert from driver app
-    const handleWorkCompleted = (data) => {
-      addToast({
-        type: 'completed',
-        title: '🎉 WORK COMPLETED',
-        message: data.message || `Driver ${data.driver_name} reached ${data.destination_name} and completed the blood collection task!`,
-        duration: 9000,
-      });
-      reloadDestinations();
-    };
-
     // Live assignment / collection request updates
     const handleRequestUpdated = (data) => {
       reloadDestinations();
     };
 
-    socket.on('work_completed_alert', handleWorkCompleted);
     socket.on('request_status_updated', handleRequestUpdated);
 
     return () => {
-      socket.off('work_completed_alert', handleWorkCompleted);
       socket.off('request_status_updated', handleRequestUpdated);
     };
   }, [socket, addToast, reloadDestinations]);
