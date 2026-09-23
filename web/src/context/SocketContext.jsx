@@ -395,7 +395,18 @@ export function SocketProvider({ children }) {
       reloadDestinations();
     });
 
+    let lastCompletedAlertTime = 0;
+    let lastCompletedKey = null;
+
     socket.on('work_completed_alert', (data) => {
+      const now = Date.now();
+      const key = data.assignment_id || data.work_log_id || `${data.driver_id}-${data.destination_id}`;
+      if (key && key === lastCompletedKey && now - lastCompletedAlertTime < 6000) {
+        return; // Suppress duplicate toast alert
+      }
+      lastCompletedAlertTime = now;
+      lastCompletedKey = key;
+
       addToast({
         title: '✅ Blood Run Completed & Logged',
         message: data.message || `Driver completed collection and saved in Work Log.`,
