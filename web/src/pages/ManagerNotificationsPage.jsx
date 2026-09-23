@@ -23,10 +23,9 @@ export default function ManagerNotificationsPage() {
 
   const [filterUnread, setFilterUnread] = useState(false);
 
-  const displayedNotifications = useMemo(() => {
-    const list = filterUnread ? notifications.filter((n) => !n.is_read) : notifications;
+  const uniqueNotifications = useMemo(() => {
     const seen = new Set();
-    return list.filter((n) => {
+    return (notifications || []).filter((n) => {
       const key = (n.assignment_id && n.type)
         ? `${n.assignment_id}-${n.type}`
         : `${n.driver_id || n.driver_name}-${n.destination_id || n.destination_name}-${n.type || 'work_completed'}-${(n.message || '').replace(/\s+/g, ' ').trim()}`;
@@ -34,7 +33,15 @@ export default function ManagerNotificationsPage() {
       seen.add(key);
       return true;
     });
-  }, [notifications, filterUnread]);
+  }, [notifications]);
+
+  const displayedNotifications = useMemo(() => {
+    return filterUnread ? uniqueNotifications.filter((n) => !n.is_read) : uniqueNotifications;
+  }, [uniqueNotifications, filterUnread]);
+
+  const unreadCount = useMemo(() => {
+    return uniqueNotifications.filter((n) => !n.is_read).length;
+  }, [uniqueNotifications]);
 
   const formatTimestamp = (dateStr) => {
     if (!dateStr) return '';
@@ -80,7 +87,7 @@ export default function ManagerNotificationsPage() {
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
-          {unreadNotificationsCount > 0 && (
+          {unreadCount > 0 && (
             <button
               onClick={markAllNotificationsRead}
               className="btn btn-secondary btn-sm"
@@ -115,22 +122,22 @@ export default function ManagerNotificationsPage() {
               className={`btn btn-sm ${!filterUnread ? 'btn-primary' : 'btn-secondary'}`}
               style={{ fontSize: 12, padding: '5px 14px' }}
             >
-              All Alerts ({notifications.length})
+              All Alerts ({uniqueNotifications.length})
             </button>
             <button
               onClick={() => setFilterUnread(true)}
               className={`btn btn-sm ${filterUnread ? 'btn-primary' : 'btn-secondary'}`}
               style={{ fontSize: 12, padding: '5px 14px' }}
             >
-              Unread ({unreadNotificationsCount})
+              Unread ({unreadCount})
             </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Total notifications: <strong>{notifications.length}</strong>
+              Total notifications: <strong>{uniqueNotifications.length}</strong>
             </span>
-            {notifications.length > 0 && (
+            {uniqueNotifications.length > 0 && (
               <button
                 onClick={() => {
                   if (window.confirm('Are you sure you want to clear all notifications?')) {

@@ -373,16 +373,30 @@ export function SocketProvider({ children }) {
       reloadDestinations();
     });
 
+    const addNotificationSafely = (n) => {
+      if (!n) return;
+      setNotifications(prev => {
+        const nKey = (n.assignment_id && n.type)
+          ? `${n.assignment_id}-${n.type}`
+          : `${n.driver_id || n.driver_name}-${n.destination_id || n.destination_name}-${n.type || 'work_completed'}-${(n.message || '').replace(/\s+/g, ' ').trim()}`;
+
+        const exists = prev.some(x => {
+          if (x.id === n.id) return true;
+          const xKey = (x.assignment_id && x.type)
+            ? `${x.assignment_id}-${x.type}`
+            : `${x.driver_id || x.driver_name}-${x.destination_id || x.destination_name}-${x.type || 'work_completed'}-${(x.message || '').replace(/\s+/g, ' ').trim()}`;
+          return xKey === nKey;
+        });
+
+        if (exists) return prev;
+        setUnreadNotificationsCount(count => count + 1);
+        return [n, ...prev].slice(0, 100);
+      });
+    };
+
     socket.on('notification_new', (data) => {
       if (data?.notification) {
-        const n = data.notification;
-        setNotifications(prev => {
-          if (prev.some(x => x.id === n.id || (n.assignment_id && x.assignment_id === n.assignment_id && x.type === n.type))) {
-            return prev;
-          }
-          return [n, ...prev].slice(0, 100);
-        });
-        setUnreadNotificationsCount(prev => prev + 1);
+        addNotificationSafely(data.notification);
       }
     });
 
@@ -421,8 +435,7 @@ export function SocketProvider({ children }) {
 
     socket.on('geofence_alert', (data) => {
       if (data?.notification) {
-        setNotifications(prev => [data.notification, ...prev].slice(0, 100));
-        setUnreadNotificationsCount(prev => prev + 1);
+        addNotificationSafely(data.notification);
         addToast({
           title: '📍 Proximity Geofence Alert',
           message: data.notification.message,
