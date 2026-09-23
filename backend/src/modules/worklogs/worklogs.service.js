@@ -155,8 +155,8 @@ function getWorkLogStats() {
       COUNT(*) AS total_completed,
       COALESCE(SUM(duration_mins), 0) AS total_duration_mins,
       COUNT(DISTINCT driver_id) AS active_drivers,
-      SUM(CASE WHEN urgency = 'emergency' THEN 1 ELSE 0 END) AS emergency_runs,
-      SUM(CASE WHEN urgency = 'urgent' THEN 1 ELSE 0 END) AS urgent_runs
+      COALESCE(SUM(CASE WHEN urgency = 'emergency' THEN 1 ELSE 0 END), 0) AS emergency_runs,
+      COALESCE(SUM(CASE WHEN urgency = 'urgent' THEN 1 ELSE 0 END), 0) AS urgent_runs
     FROM unique_logs
   `) || { total_completed: 0, total_duration_mins: 0, active_drivers: 0, emergency_runs: 0, urgent_runs: 0 };
 
