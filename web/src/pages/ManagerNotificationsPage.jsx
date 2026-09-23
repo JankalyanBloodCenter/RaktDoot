@@ -24,10 +24,14 @@ export default function ManagerNotificationsPage() {
   const [filterUnread, setFilterUnread] = useState(false);
 
   const displayedNotifications = useMemo(() => {
-    if (filterUnread) {
-      return notifications.filter((n) => !n.is_read);
-    }
-    return notifications;
+    const list = filterUnread ? notifications.filter((n) => !n.is_read) : notifications;
+    const seen = new Set();
+    return list.filter((n) => {
+      const key = (n.assignment_id && n.type) ? `${n.assignment_id}-${n.type}` : (n.id || `${n.message}-${n.created_at}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [notifications, filterUnread]);
 
   const formatTimestamp = (dateStr) => {

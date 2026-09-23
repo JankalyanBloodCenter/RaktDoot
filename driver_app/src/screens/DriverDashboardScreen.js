@@ -175,7 +175,6 @@ export default function DriverDashboardScreen({
     if (!task) return;
     try {
       await respondToAssignment(serverUrl, token, task.id, 'accepted');
-      socketManager.emitTaskResponse(task.id, 'accepted');
       const updated = { ...task, status: 'accepted' };
       setActiveAssignment(updated);
       setIncomingTask(null);
@@ -417,7 +416,6 @@ export default function DriverDashboardScreen({
     try {
       setCompletingTask(true);
       await respondToAssignment(serverUrl, token, activeAssignment.id, 'completed');
-      socketManager.emitTaskResponse(activeAssignment.id, 'completed');
       setActiveAssignment(null);
       setShowRouteMappingModal(false);
       Alert.alert(

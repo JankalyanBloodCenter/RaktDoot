@@ -55,11 +55,8 @@ export default function TaskNotificationModal({
   const handleResponse = async (status) => {
     setResponding(true);
     try {
-      // 1. Send via REST
+      // 1. Send via REST (which broadcasts socket events server-side)
       await respondToAssignment(serverUrl, token, assignment.id, status);
-
-      // 2. Also emit via socket
-      socketManager.emitTaskResponse(assignment.id, status);
 
       if (status === 'accepted') {
         onAccepted?.(assignment);

@@ -80,6 +80,14 @@ function createWorkLog({
   duration_mins = 0,
   distance_km = 0,
 }) {
+  // Prevent duplicate work logs for the same completed assignment
+  if (assignment_id) {
+    const existing = dbGet('SELECT id FROM work_logs WHERE assignment_id = ?', [assignment_id]);
+    if (existing) {
+      return getWorkLogById(existing.id);
+    }
+  }
+
   const id = 'wl-' + uuidv4();
   const completedTimestamp = completed_at || new Date().toISOString();
 

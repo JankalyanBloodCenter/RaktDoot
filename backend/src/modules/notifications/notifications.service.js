@@ -14,6 +14,17 @@ function createGeofenceNotification({
   message,
   distance_m = 0,
 }) {
+  // Prevent duplicate notifications for the same assignment event
+  if (assignment_id && ['work_completed', 'request_rejected', 'request_accepted'].includes(type)) {
+    const existing = dbGet(
+      'SELECT id FROM geofence_notifications WHERE assignment_id = ? AND type = ?',
+      [assignment_id, type]
+    );
+    if (existing) {
+      return getNotificationById(existing.id);
+    }
+  }
+
   const id = uuidv4();
   dbRun(`
     INSERT INTO geofence_notifications (id, manager_id, driver_id, destination_id, assignment_id, type, message, distance_m, is_read)

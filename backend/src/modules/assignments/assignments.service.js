@@ -223,6 +223,9 @@ function updateAssignmentStatus(id, newStatus, userId, userRole) {
     throw err;
   }
 
+  const previousStatus = assignment.status;
+  const isStatusChanged = previousStatus !== newStatus;
+
   let acceptedAtUpdate = assignment.accepted_at;
   let completedAtUpdate = assignment.completed_at;
 
@@ -233,16 +236,23 @@ function updateAssignmentStatus(id, newStatus, userId, userRole) {
     completedAtUpdate = new Date().toISOString();
   }
 
-  dbRun(`
-    UPDATE driver_assignments SET
-      status = ?,
-      accepted_at = ?,
-      completed_at = ?,
-      updated_at = datetime('now')
-    WHERE id = ?
-  `, [newStatus, acceptedAtUpdate, completedAtUpdate, id]);
+  if (isStatusChanged) {
+    dbRun(`
+      UPDATE driver_assignments SET
+        status = ?,
+        accepted_at = ?,
+        completed_at = ?,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `, [newStatus, acceptedAtUpdate, completedAtUpdate, id]);
+  }
 
-  return getAssignmentById(id);
+  const updated = getAssignmentById(id);
+  if (updated) {
+    updated._statusChanged = isStatusChanged;
+    updated._previousStatus = previousStatus;
+  }
+  return updated;
 }
 
 module.exports = {

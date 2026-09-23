@@ -47,6 +47,16 @@ function initDB() {
   try { db.run('ALTER TABLE users ADD COLUMN vehicle_type TEXT DEFAULT "two_wheeler"'); } catch (_) {}
   try { db.run('ALTER TABLE users ADD COLUMN vehicle_number TEXT'); } catch (_) {}
   try { db.run('ALTER TABLE geofence_notifications ADD COLUMN distance_m REAL'); } catch (_) {}
+  try {
+    db.run(`
+      DELETE FROM geofence_notifications
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM geofence_notifications
+        GROUP BY COALESCE(assignment_id, id), type, message
+      )
+    `);
+  } catch (_) {}
 
   // Work Logs Table for completed delivery & collection task records
   try {

@@ -34,8 +34,16 @@ export function SocketProvider({ children }) {
     try {
       const res = await api.get('/notifications');
       if (res.data?.success) {
-        setNotifications(res.data.data || []);
-        setUnreadNotificationsCount(res.data.unreadCount || 0);
+        const raw = res.data.data || [];
+        const seen = new Set();
+        const unique = raw.filter(n => {
+          const key = (n.assignment_id && n.type) ? `${n.assignment_id}-${n.type}` : (n.id || `${n.message}-${n.created_at}`);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setNotifications(unique);
+        setUnreadNotificationsCount(res.data.unreadCount != null ? res.data.unreadCount : unique.filter(n => !n.is_read).length);
       }
     } catch (err) {
       console.error('[Notifications] Load error:', err.message);
@@ -365,9 +373,12 @@ export function SocketProvider({ children }) {
 
     socket.on('notification_new', (data) => {
       if (data?.notification) {
+        const n = data.notification;
         setNotifications(prev => {
-          if (prev.some(n => n.id === data.notification.id)) return prev;
-          return [data.notification, ...prev].slice(0, 100);
+          if (prev.some(x => x.id === n.id || (n.assignment_id && x.assignment_id === n.assignment_id && x.type === n.type))) {
+            return prev;
+          }
+          return [n, ...prev].slice(0, 100);
         });
         setUnreadNotificationsCount(prev => prev + 1);
       }
