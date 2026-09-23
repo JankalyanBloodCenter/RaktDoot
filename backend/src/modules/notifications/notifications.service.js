@@ -14,7 +14,7 @@ function createGeofenceNotification({
   message,
   distance_m = 0,
 }) {
-  // Prevent duplicate notifications for the same assignment event
+  // 1. Prevent duplicate notifications for the same assignment event
   if (assignment_id && ['work_completed', 'request_rejected', 'request_accepted'].includes(type)) {
     const existing = dbGet(
       'SELECT id FROM geofence_notifications WHERE assignment_id = ? AND type = ?',
@@ -22,6 +22,18 @@ function createGeofenceNotification({
     );
     if (existing) {
       return getNotificationById(existing.id);
+    }
+  }
+
+  // 2. Prevent rapid duplicate notifications for the same driver, destination, and type within 15 seconds
+  if (driver_id && destination_id && ['work_completed', 'request_rejected', 'request_accepted'].includes(type)) {
+    const recent = dbGet(`
+      SELECT id FROM geofence_notifications
+      WHERE driver_id = ? AND destination_id = ? AND type = ?
+        AND created_at >= datetime('now', '-15 seconds')
+    `, [driver_id, destination_id, type]);
+    if (recent) {
+      return getNotificationById(recent.id);
     }
   }
 
@@ -52,7 +64,7 @@ function getNotificationById(id) {
 }
 
 /**
- * Get notifications for a manager, ordered newest first.
+ * Get notifications for a manager, ordered newest first with SQL deduplication.
  */
 function getNotifications(manager_id, { unread_only = false, limit = 50 } = {}) {
   let sql = `
@@ -72,7 +84,13 @@ function getNotifications(manager_id, { unread_only = false, limit = 50 } = {}) 
     sql += ' AND n.is_read = 0';
   }
 
-  sql += ' ORDER BY n.created_at DESC LIMIT ?';
+  sql += `
+    GROUP BY CASE
+      WHEN n.assignment_id IS NOT NULL AND n.assignment_id != '' THEN n.assignment_id || '_' || n.type
+      ELSE n.driver_id || '_' || COALESCE(n.destination_id, '') || '_' || n.type || '_' || substr(n.created_at, 1, 16)
+    END
+    ORDER BY n.created_at DESC LIMIT ?
+  `;
   params.push(parseInt(limit) || 50);
 
   return dbAll(sql, params);
@@ -109,7 +127,10 @@ function markAllRead(manager_id) {
  */
 function getUnreadCount(manager_id) {
   const row = dbGet(`
-    SELECT COUNT(*) AS count
+    SELECT COUNT(DISTINCT CASE
+      WHEN assignment_id IS NOT NULL AND assignment_id != '' THEN assignment_id || '_' || type
+      ELSE driver_id || '_' || COALESCE(destination_id, '') || '_' || type || '_' || substr(created_at, 1, 16)
+    END) AS count
     FROM geofence_notifications
     WHERE (manager_id = ? OR manager_id = 'all') AND is_read = 0
   `, [manager_id]);
