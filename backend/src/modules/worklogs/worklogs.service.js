@@ -94,23 +94,27 @@ function createWorkLog({
     }
   }
 
-  // 2. Prevent rapid duplicate work logs within 30 seconds for the same driver & destination
+  const completedTimestamp = completed_at || new Date().toISOString();
+
+  // 2. Prevent duplicate work logs for the same driver & destination within 5 minutes or same minute
   if (driver_id && destination_id) {
     const recent = dbGet(`
       SELECT id FROM work_logs
       WHERE driver_id = ? AND destination_id = ?
-        AND created_at >= datetime('now', '-30 seconds')
-    `, [driver_id, destination_id]);
+        AND (
+          created_at >= datetime('now', '-5 minutes')
+          OR substr(completed_at, 1, 16) = substr(?, 1, 16)
+        )
+    `, [driver_id, destination_id, completedTimestamp]);
     if (recent) {
       return getWorkLogById(recent.id);
     }
   }
 
   const id = 'wl-' + uuidv4();
-  const completedTimestamp = completed_at || new Date().toISOString();
 
   dbRun(`
-    INSERT INTO work_logs (
+    INSERT OR IGNORE INTO work_logs (
       id, assignment_id, driver_id, destination_id,
       source_name, destination_name, destination_address,
       urgency, category, unit_count, notes, assigned_at, accepted_at, completed_at,
@@ -135,7 +139,7 @@ function createWorkLog({
     distance_km,
   ]);
 
-  return getWorkLogById(id);
+  return getWorkLogById(id) || (assignment_id ? dbGet('SELECT * FROM work_logs WHERE assignment_id = ?', [assignment_id]) : null);
 }
 
 /**

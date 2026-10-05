@@ -49,6 +49,8 @@ function initDB() {
   try { db.run('ALTER TABLE users ADD COLUMN vehicle_type TEXT DEFAULT "two_wheeler"'); } catch (_) {}
   try { db.run('ALTER TABLE users ADD COLUMN vehicle_number TEXT'); } catch (_) {}
   try { db.run('ALTER TABLE geofence_notifications ADD COLUMN distance_m REAL'); } catch (_) {}
+  // ── DEDUPLICATION & SUPERSEDING MIGRATIONS ──
+  // 1. Remove duplicate geofence notifications
   try {
     db.run(`
       DELETE FROM geofence_notifications
@@ -60,6 +62,18 @@ function initDB() {
     `);
   } catch (_) {}
 
+  // 2. When an assignment has a 'work_completed' notification, delete intermediate 'geofence_enter' notifications for it
+  try {
+    db.run(`
+      DELETE FROM geofence_notifications
+      WHERE type = 'geofence_enter'
+        AND assignment_id IN (
+          SELECT assignment_id FROM geofence_notifications WHERE type = 'work_completed' AND assignment_id IS NOT NULL AND assignment_id != ''
+        )
+    `);
+  } catch (_) {}
+
+  // 3. Deduplicate work_logs by assignment_id
   try {
     db.run(`
       DELETE FROM work_logs
@@ -101,6 +115,7 @@ function initDB() {
     `);
     db.run('CREATE INDEX IF NOT EXISTS idx_work_logs_driver ON work_logs(driver_id, completed_at DESC)');
     db.run('CREATE INDEX IF NOT EXISTS idx_work_logs_completed_at ON work_logs(completed_at DESC)');
+    db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_work_logs_unique_assignment ON work_logs(assignment_id) WHERE assignment_id IS NOT NULL AND assignment_id != ''");
   } catch (err) {
     console.warn('[DB] work_logs table init warning:', err.message);
   }

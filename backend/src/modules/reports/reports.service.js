@@ -77,7 +77,7 @@ function getDriverReport({ driverId = 'all', period = 'last_30_days', startDate 
       d.name as destination_name, d.address as destination_address,
       u.name as driver_name, u.vehicle_type, u.vehicle_number
     FROM driver_assignments da
-    JOIN destinations d ON d.id = da.destination_id
+    LEFT JOIN destinations d ON d.id = da.destination_id
     JOIN users u ON u.id = da.driver_id
     WHERE da.assigned_at >= ? AND da.assigned_at <= ?
   `;
@@ -131,8 +131,9 @@ function getDriverReport({ driverId = 'all', period = 'last_30_days', startDate 
   const issues = dbAll(issuesSql, issuesParams);
 
   // Calculate analytical KPIs
+  // Each assigned task can be completed at most once per driver
   const totalAssigned = assignments.length;
-  const completedCount = workLogs.length;
+  const completedCount = totalAssigned > 0 ? Math.min(workLogs.length, totalAssigned) : workLogs.length;
   const rejectedCount = assignments.filter(a => a.status === 'rejected').length;
   const inProgressCount = assignments.filter(a => ['accepted', 'in_progress'].includes(a.status)).length;
   const pendingCount = assignments.filter(a => a.status === 'pending').length;
@@ -146,11 +147,11 @@ function getDriverReport({ driverId = 'all', period = 'last_30_days', startDate 
   const normalCount = assignments.filter(a => a.urgency === 'normal' || !a.urgency).length;
 
   const acceptanceRate = totalAssigned > 0
-    ? Math.round(((totalAssigned - rejectedCount) / totalAssigned) * 100)
+    ? Math.min(100, Math.round(((totalAssigned - rejectedCount) / totalAssigned) * 100))
     : 100;
 
   const completionRate = totalAssigned > 0
-    ? Math.round((completedCount / totalAssigned) * 100)
+    ? Math.min(100, Math.round((completedCount / totalAssigned) * 100))
     : 100;
 
   const avgSpeedKmh = totalDurationMins > 0
@@ -169,6 +170,9 @@ function getDriverReport({ driverId = 'all', period = 'last_30_days', startDate 
       const dMins = dWork.reduce((acc, cur) => acc + (parseInt(cur.duration_mins, 10) || 0), 0);
       const dRej = dAssign.filter(a => a.status === 'rejected').length;
 
+      // Ensure a driver's completed deliveries never exceed their assigned requests
+      const dCompCount = dAssign.length > 0 ? Math.min(dWork.length, dAssign.length) : dWork.length;
+
       driverBreakdowns.push({
         id: d.id,
         name: d.name,
@@ -177,13 +181,13 @@ function getDriverReport({ driverId = 'all', period = 'last_30_days', startDate 
         vehicle_type: d.vehicle_type || 'two_wheeler',
         vehicle_number: d.vehicle_number || null,
         total_assigned: dAssign.length,
-        completed_count: dWork.length,
+        completed_count: dCompCount,
         rejected_count: dRej,
-        acceptance_rate: dAssign.length > 0 ? Math.round(((dAssign.length - dRej) / dAssign.length) * 100) : 100,
+        acceptance_rate: dAssign.length > 0 ? Math.min(100, Math.round(((dAssign.length - dRej) / dAssign.length) * 100)) : 100,
         total_distance_km: Math.round(dDist * 10) / 10,
         total_duration_mins: dMins,
         total_duration_hours: (dMins / 60).toFixed(1),
-        avg_duration_mins: dWork.length > 0 ? Math.round(dMins / dWork.length) : 0,
+        avg_duration_mins: dCompCount > 0 ? Math.round(dMins / dCompCount) : 0,
         issues_count: dIssues.length,
       });
     }
@@ -287,7 +291,7 @@ function getHospitalReport({ destinationId = 'all', period = 'last_30_days', sta
       d.name as destination_name, d.address as destination_address,
       u.name as driver_name, u.phone as driver_phone, u.vehicle_type, u.vehicle_number
     FROM driver_assignments da
-    JOIN destinations d ON d.id = da.destination_id
+    LEFT JOIN destinations d ON d.id = da.destination_id
     JOIN users u ON u.id = da.driver_id
     WHERE da.assigned_at >= ? AND da.assigned_at <= ?
   `;

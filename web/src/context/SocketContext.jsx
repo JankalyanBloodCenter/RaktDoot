@@ -35,15 +35,31 @@ export function SocketProvider({ children }) {
       const res = await api.get('/notifications');
       if (res.data?.success) {
         const raw = res.data.data || [];
-        const seen = new Set();
-        const unique = raw.filter(n => {
-          const key = (n.assignment_id && n.type)
-            ? `${n.assignment_id}-${n.type}`
-            : `${n.driver_id || n.driver_name}-${n.destination_id || n.destination_name}-${n.type || 'work_completed'}-${(n.message || '').replace(/\s+/g, ' ').trim()}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+        // First identify all assignments that have a completed or rejected status notification
+        const completedAssignmentIds = new Set(
+          raw.filter(n => n.type === 'work_completed' && n.assignment_id).map(n => n.assignment_id)
+        );
+
+        const seenAssignments = new Set();
+        const unique = [];
+
+        for (const n of raw) {
+          // If this assignment already has work_completed, discard intermediate geofence_enter alerts
+          if (n.assignment_id && n.type === 'geofence_enter' && completedAssignmentIds.has(n.assignment_id)) {
+            continue;
+          }
+
+          const assignKey = n.assignment_id
+            ? `${n.assignment_id}`
+            : `${n.driver_id || n.driver_name}-${n.destination_id || n.destination_name}-${(n.message || '').replace(/\s+/g, ' ').trim()}`;
+
+          if (seenAssignments.has(assignKey)) {
+            continue;
+          }
+          seenAssignments.add(assignKey);
+          unique.push(n);
+        }
+
         setNotifications(unique);
         setUnreadNotificationsCount(res.data.unreadCount != null ? res.data.unreadCount : unique.filter(n => !n.is_read).length);
       }
@@ -376,21 +392,25 @@ export function SocketProvider({ children }) {
     const addNotificationSafely = (n) => {
       if (!n) return;
       setNotifications(prev => {
-        const nKey = (n.assignment_id && n.type)
-          ? `${n.assignment_id}-${n.type}`
-          : `${n.driver_id || n.driver_name}-${n.destination_id || n.destination_name}-${n.type || 'work_completed'}-${(n.message || '').replace(/\s+/g, ' ').trim()}`;
+        // If incoming is work_completed, remove any previous geofence_enter for this assignment
+        let filtered = prev;
+        if (n.type === 'work_completed' && n.assignment_id) {
+          filtered = prev.filter(x => !(x.assignment_id === n.assignment_id && x.type === 'geofence_enter'));
+        }
 
-        const exists = prev.some(x => {
+        // Strictly ensure 1 notification per assignment
+        const exists = filtered.some(x => {
           if (x.id === n.id) return true;
-          const xKey = (x.assignment_id && x.type)
-            ? `${x.assignment_id}-${x.type}`
-            : `${x.driver_id || x.driver_name}-${x.destination_id || x.destination_name}-${x.type || 'work_completed'}-${(x.message || '').replace(/\s+/g, ' ').trim()}`;
-          return xKey === nKey;
+          if (n.assignment_id && x.assignment_id === n.assignment_id) {
+            // If the existing is geofence_enter and incoming is work_completed, replace it
+            return x.type === n.type;
+          }
+          return false;
         });
 
-        if (exists) return prev;
+        if (exists) return filtered;
         setUnreadNotificationsCount(count => count + 1);
-        return [n, ...prev].slice(0, 100);
+        return [n, ...filtered].slice(0, 100);
       });
     };
 
@@ -436,12 +456,6 @@ export function SocketProvider({ children }) {
     socket.on('geofence_alert', (data) => {
       if (data?.notification) {
         addNotificationSafely(data.notification);
-        addToast({
-          title: '📍 Proximity Geofence Alert',
-          message: data.notification.message,
-          type: 'entry',
-          duration: 6000,
-        });
       }
     });
 

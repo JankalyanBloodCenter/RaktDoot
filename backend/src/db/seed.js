@@ -214,6 +214,29 @@ async function seedDatabase(force = false) {
     for (const log of sampleWorkLogs) {
       const driverExists = dbGet("SELECT id FROM users WHERE id = ?", [log.driver_id]);
       if (!driverExists) continue;
+
+      const assignmentId = 'assign-' + log.id;
+      // Ensure the corresponding completed assignment exists in driver_assignments
+      const assignExists = dbGet("SELECT id FROM driver_assignments WHERE id = ?", [assignmentId]);
+      if (!assignExists) {
+        dbRun(`
+          INSERT INTO driver_assignments (
+            id, destination_id, driver_id, assigned_by, status,
+            source_name, urgency, notes, assigned_at, accepted_at, completed_at
+          ) VALUES (?, ?, ?, 'user-mgr-001', 'completed', ?, ?, ?, ?, ?, ?)
+        `, [
+          assignmentId,
+          log.destination_id,
+          log.driver_id,
+          log.source_name,
+          log.urgency,
+          log.notes,
+          log.assigned_at,
+          log.accepted_at,
+          log.completed_at
+        ]);
+      }
+
       dbRun(`
         INSERT INTO work_logs (
           id, assignment_id, driver_id, destination_id,
@@ -223,7 +246,7 @@ async function seedDatabase(force = false) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `, [
         log.id,
-        'assign-' + log.id,
+        assignmentId,
         log.driver_id,
         log.destination_id,
         log.source_name,
@@ -238,7 +261,7 @@ async function seedDatabase(force = false) {
         log.distance_km,
       ]);
     }
-    console.log(`  ✅ Seeded ${sampleWorkLogs.length} initial completed work logs.`);
+    console.log(`  ✅ Seeded ${sampleWorkLogs.length} initial completed work logs with matching assignments.`);
   }
 
   // Seed sample rejected assignments if none exist
