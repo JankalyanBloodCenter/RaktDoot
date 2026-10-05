@@ -2,10 +2,12 @@ import axios from 'axios';
 
 export const API_URL = import.meta.env.VITE_API_URL || (
   typeof window !== 'undefined'
-    ? (window.location.port === '5000'
-        ? window.location.origin
-        : `http://${window.location.hostname}:5000`)
-    : 'http://localhost:5000'
+    ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? (window.location.port === '5000'
+            ? window.location.origin
+            : `http://${window.location.hostname}:5000`)
+        : 'https://raktdoot-backend-g8fz.onrender.com')
+    : 'https://raktdoot-backend-g8fz.onrender.com'
 );
 export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || API_URL;
 
