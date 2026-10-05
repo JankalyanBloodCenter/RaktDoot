@@ -8,7 +8,7 @@ async function register(req, res, next) {
       return res.status(400).json({ success: false, message: 'name, email, and password are required.' });
     }
     const result = await authService.register({ name, email, password, role, phone, vehicle_type, vehicle_number });
-    res.status(201).json({ success: true, data: result });
+    res.status(201).json({ success: true, message: 'Account created successfully! Welcome to Raktdoot.', data: result });
   } catch (err) {
     next(err);
   }

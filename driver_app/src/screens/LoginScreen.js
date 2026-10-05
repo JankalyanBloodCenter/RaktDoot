@@ -19,6 +19,9 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [showServerConfig, setShowServerConfig] = useState(false);
   const [loading, setLoading]                   = useState(false);
   const [errorMsg, setErrorMsg]                 = useState('');
+  const [regErrorMsg, setRegErrorMsg]           = useState('');
+  const [regSuccessData, setRegSuccessData]     = useState(null);
+  const [isEmailAlreadyExists, setIsEmailAlreadyExists] = useState(false);
 
   const [siEmail, setSiEmail]       = useState('');
   const [siPassword, setSiPassword] = useState('');
@@ -58,6 +61,8 @@ export default function LoginScreen({ onLoginSuccess }) {
   const switchTab = (tab) => {
     setActiveTab(tab);
     setErrorMsg('');
+    setRegErrorMsg('');
+    setIsEmailAlreadyExists(false);
     Animated.spring(tabSlide, {
       toValue: tab === 'signin' ? 0 : 1,
       useNativeDriver: false,
@@ -99,30 +104,45 @@ export default function LoginScreen({ onLoginSuccess }) {
     const name  = rgName.trim();
     const email = rgEmail.trim();
     const phone = rgPhone.trim();
+    setRegErrorMsg('');
+    setIsEmailAlreadyExists(false);
+
     if (!name || !email || !rgPassword) {
-      Alert.alert('Required', 'Full name, email, and password are required.');
+      const msg = 'Full name, email, and password are required.';
+      setRegErrorMsg(msg);
+      Alert.alert('Required', msg);
       return;
     }
     const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRx.test(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      const msg = 'Please enter a valid email address.';
+      setRegErrorMsg(msg);
+      Alert.alert('Invalid Email', msg);
       return;
     }
     if (phone && !/^\+?[0-9\s\-()]{7,15}$/.test(phone)) {
-      Alert.alert('Invalid Phone', 'Please enter a valid phone number.');
+      const msg = 'Please enter a valid phone number.';
+      setRegErrorMsg(msg);
+      Alert.alert('Invalid Phone', msg);
       return;
     }
     if (rgPassword.length < 6) {
-      Alert.alert('Weak Password', 'Password must be at least 6 characters.');
+      const msg = 'Password must be at least 6 characters.';
+      setRegErrorMsg(msg);
+      Alert.alert('Weak Password', msg);
       return;
     }
     if (rgPassword !== rgConfirm) {
-      Alert.alert('Passwords Mismatch', 'Password and confirm password do not match.');
+      const msg = 'Password and confirm password do not match.';
+      setRegErrorMsg(msg);
+      Alert.alert('Passwords Mismatch', msg);
       return;
     }
     const vehicleNumber = rgVehicleNumber.trim().toUpperCase();
     if (!vehicleNumber) {
-      Alert.alert('Vehicle Required', 'Please enter your vehicle registration number (e.g. MH 12 AB 1234).');
+      const msg = 'Please enter your vehicle registration number (e.g. MH 12 AB 1234).';
+      setRegErrorMsg(msg);
+      Alert.alert('Vehicle Required', msg);
       return;
     }
     try {
@@ -137,13 +157,31 @@ export default function LoginScreen({ onLoginSuccess }) {
         vehicle_number: vehicleNumber,
       });
       await storeAuth(authData);
-      Alert.alert(
-        'Account Created!',
-        `Welcome, ${authData.user.name}! Your driver account has been created successfully with ${rgVehicleType === 'four_wheeler' ? 'Four Wheeler' : 'Two Wheeler'} (${vehicleNumber}).`,
-        [{ text: 'Continue', onPress: () => onLoginSuccess(authData, serverUrl) }]
-      );
+      setRegSuccessData({
+        user: authData.user,
+        authData,
+        vehicleType: rgVehicleType === 'four_wheeler' ? 'Four Wheeler' : 'Two Wheeler',
+        vehicleNumber,
+      });
+      try {
+        Alert.alert(
+          'Account Created!',
+          `Welcome, ${authData.user.name}! Your driver account has been created successfully with ${rgVehicleType === 'four_wheeler' ? 'Four Wheeler' : 'Two Wheeler'} (${vehicleNumber}).`,
+          [{ text: 'Continue', onPress: () => onLoginSuccess(authData, serverUrl) }]
+        );
+      } catch (_) {}
     } catch (err) {
-      Alert.alert('Registration Failed', err.message);
+      const errMsg = err.message || 'Registration failed. Please try again.';
+      if (errMsg.toLowerCase().includes('already')) {
+        setIsEmailAlreadyExists(true);
+        setRegErrorMsg('Account already exists for this email! Please sign in with your password.');
+      } else {
+        setIsEmailAlreadyExists(false);
+        setRegErrorMsg(errMsg);
+      }
+      try {
+        Alert.alert(errMsg.toLowerCase().includes('already') ? 'Account Already Exists' : 'Registration Failed', errMsg);
+      } catch (_) {}
     } finally {
       setLoading(false);
     }
@@ -243,6 +281,50 @@ export default function LoginScreen({ onLoginSuccess }) {
               <View style={s.formSection}>
                 <Text style={s.cardTitle}>Join as Driver</Text>
                 <Text style={s.cardSub}>Fill in your details to create your driver account</Text>
+
+                {regSuccessData ? (
+                  <View style={s.successCard}>
+                    <Text style={s.successIcon}>🎉</Text>
+                    <Text style={s.successTitle}>Account Created Successfully!</Text>
+                    <Text style={s.successSub}>
+                      Welcome, <Text style={{ color: '#34d399', fontWeight: '800' }}>{regSuccessData.user.name}</Text>! Your driver account has been created with {regSuccessData.vehicleType} ({regSuccessData.vehicleNumber}).
+                    </Text>
+                    <TouchableOpacity
+                      style={[s.submitBtn, s.submitBtnGreen, { width: '100%', marginTop: 14 }]}
+                      onPress={() => onLoginSuccess(regSuccessData.authData, serverUrl)}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={s.submitText}>🚀 Continue to Driver Dashboard</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.switchLink, { marginTop: 10 }]}
+                      onPress={() => {
+                        setSiEmail(regSuccessData.user.email);
+                        setRegSuccessData(null);
+                        switchTab('signin');
+                      }}
+                    >
+                      <Text style={s.switchLinkText}>Or <Text style={s.switchLinkHighlight}>Sign In Manually</Text></Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {regErrorMsg ? (
+                  <View style={s.errorBanner}>
+                    <Text style={s.errorBannerText}>⚠️ {regErrorMsg}</Text>
+                    {isEmailAlreadyExists && (
+                      <TouchableOpacity
+                        style={s.bannerActionBtn}
+                        onPress={() => {
+                          setSiEmail(rgEmail.trim());
+                          switchTab('signin');
+                        }}
+                      >
+                        <Text style={s.bannerActionText}>👉 Click here to Sign In with this email</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ) : null}
 
                 <Text style={s.label}>FULL NAME *</Text>
                 <View style={[s.inputRow, rgNameFocused && s.inputRowFocused]}>
@@ -461,6 +543,12 @@ const s = StyleSheet.create({
   switchLinkHighlight: { color: '#fca5a5', fontWeight: '700' },
   errorBanner: { backgroundColor: 'rgba(239,68,68,0.18)', borderWidth: 1, borderColor: '#ef4444', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14 },
   errorBannerText: { color: '#fca5a5', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  bannerActionBtn: { marginTop: 8, backgroundColor: 'rgba(239, 68, 68, 0.3)', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, alignItems: 'center' },
+  bannerActionText: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
+  successCard: { backgroundColor: 'rgba(16, 185, 129, 0.16)', borderWidth: 1.5, borderColor: '#10b981', borderRadius: 14, padding: 16, marginBottom: 16, alignItems: 'center' },
+  successIcon: { fontSize: 32, marginBottom: 6 },
+  successTitle: { fontSize: 16, fontWeight: '800', color: '#34d399', textAlign: 'center', marginBottom: 6 },
+  successSub: { fontSize: 12.5, color: '#e2e8f0', textAlign: 'center', lineHeight: 18 },
   footer: { alignItems: 'center', gap: 8, marginTop: 16 },
   harbingerLogo: { width: 160, height: 34, opacity: 0.95 },
   copyright: { fontSize: 11, color: '#ffffff', textAlign: 'center' },

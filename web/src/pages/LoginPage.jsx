@@ -217,6 +217,33 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+
+            {/* Driver Portal & Registration Link */}
+            <div className="driver-portal-card-link" style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
+                Are you a <strong style={{ color: '#ef4444' }}>Raktdoot Delivery Driver</strong>?
+              </p>
+              <a
+                href={`${import.meta.env.VITE_API_URL || 'https://raktdoot-backend-g8fz.onrender.com'}/driver`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  color: '#fca5a5',
+                  fontSize: '12.5px',
+                  fontWeight: '700',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  textDecoration: 'none',
+                }}
+              >
+                <Truck size={14} /> Open Driver Portal / Register Driver Account &rarr;
+              </a>
+            </div>
           </div>
         </section>
       </main>

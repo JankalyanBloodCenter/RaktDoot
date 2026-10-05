@@ -19,10 +19,12 @@ function sanitizeUser(user) {
 }
 
 async function register({ name, email, password, role = 'driver', phone, vehicle_type = 'two_wheeler', vehicle_number = null }) {
-  const existing = dbGet('SELECT id FROM users WHERE email = ?', [email]);
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const existing = dbGet('SELECT id, name FROM users WHERE LOWER(TRIM(email)) = ?', [cleanEmail]);
   if (existing) {
-    const err = new Error('Email already registered.');
+    const err = new Error('Account already exists for this email! Please sign in with your password.');
     err.status = 409;
+    err.code = 'ACCOUNT_EXISTS';
     throw err;
   }
 
@@ -36,11 +38,11 @@ async function register({ name, email, password, role = 'driver', phone, vehicle
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
-      name,
-      email,
+      (name || '').trim(),
+      cleanEmail,
       hash,
       role,
-      phone || null,
+      phone ? phone.trim() : null,
       avatar_color,
       vehicle_type || 'two_wheeler',
       vehicle_number ? vehicle_number.trim().toUpperCase() : null,
