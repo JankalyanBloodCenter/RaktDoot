@@ -29,6 +29,29 @@ const users = [
     phone: '+91-9000000002',
     avatar_color: '#8b5cf6',
   },
+  // Drivers
+  {
+    id: 'user-drv-001',
+    name: 'Ravi Kumar (RaktDoot 1)',
+    email: 'driver1@jankalyan.com',
+    password: 'RDJK@1983',
+    role: 'driver',
+    phone: '+91-9822012345',
+    avatar_color: '#3b82f6',
+    vehicle_type: 'two_wheeler',
+    vehicle_number: 'MH 12 AB 1234',
+  },
+  {
+    id: 'user-drv-002',
+    name: 'Amit Shinde (RaktDoot 2)',
+    email: 'driver2@jankalyan.com',
+    password: 'RDJK@1983',
+    role: 'driver',
+    phone: '+91-9822098765',
+    avatar_color: '#10b981',
+    vehicle_type: 'four_wheeler',
+    vehicle_number: 'MH 12 CD 5678',
+  },
 ];
 
 // No demo driver locations seeded by default
@@ -49,15 +72,15 @@ async function seedDatabase(force = false) {
     const hash = await bcrypt.hash(u.password, SALT_ROUNDS);
     if (existing) {
       dbRun(
-        `UPDATE users SET password_hash = ?, role = ?, name = ?, phone = ?, avatar_color = ?, is_active = 1 WHERE id = ?`,
-        [hash, u.role, u.name, u.phone, u.avatar_color, existing.id]
+        `UPDATE users SET password_hash = ?, role = ?, name = ?, phone = ?, avatar_color = ?, vehicle_type = ?, vehicle_number = ?, is_active = 1 WHERE id = ?`,
+        [hash, u.role, u.name, u.phone, u.avatar_color, u.vehicle_type || 'two_wheeler', u.vehicle_number || null, existing.id]
       );
       console.log(`  🔄  Updated ${u.role.padEnd(8)} → ${u.email}`);
     } else {
       dbRun(
-        `INSERT INTO users (id, name, email, password_hash, role, phone, avatar_color, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-        [u.id, u.name, u.email.toLowerCase(), hash, u.role, u.phone, u.avatar_color]
+        `INSERT INTO users (id, name, email, password_hash, role, phone, avatar_color, vehicle_type, vehicle_number, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [u.id, u.name, u.email.toLowerCase(), hash, u.role, u.phone, u.avatar_color, u.vehicle_type || 'two_wheeler', u.vehicle_number || null]
       );
       console.log(`  ✅  Created ${u.role.padEnd(8)} → ${u.email}`);
     }
@@ -216,6 +239,76 @@ async function seedDatabase(force = false) {
       ]);
     }
     console.log(`  ✅ Seeded ${sampleWorkLogs.length} initial completed work logs.`);
+  }
+
+  // Seed sample rejected assignments if none exist
+  const existingRejectionsCount = dbGet("SELECT COUNT(*) as count FROM driver_assignments WHERE status = 'rejected'")?.count || 0;
+  if (existingRejectionsCount === 0) {
+    console.log('🚫 Seeding sample rejected/declined assignments for performance audits...');
+    const now = Date.now();
+    const sampleRejections = [
+      {
+        id: 'assign-rej-001',
+        destination_id: 'dest-pune-rubyhall',
+        driver_id: 'user-drv-002',
+        assigned_by: 'user-mgr-001',
+        urgency: 'emergency',
+        category: 'plasma',
+        unit_count: 3,
+        notes: 'Emergency STAT: 3 units FFP required for cardiac surgery patient at Ruby Hall Clinic.',
+        status: 'rejected',
+        assigned_at: new Date(now - 14 * 3600 * 1000).toISOString(),
+        rejected_at: new Date(now - 13.95 * 3600 * 1000).toISOString(),
+        rejection_reason: 'Vehicle puncture near Shivajinagar railway crossing. Unable to proceed safely.',
+      },
+      {
+        id: 'assign-rej-002',
+        destination_id: 'dest-pune-deenanath',
+        driver_id: 'user-drv-001',
+        assigned_by: 'user-mgr-001',
+        urgency: 'urgent',
+        category: 'platelets',
+        unit_count: 2,
+        notes: 'Urgent: SDP Platelets for oncology ward at Deenanath Mangeshkar Hospital.',
+        status: 'rejected',
+        assigned_at: new Date(now - 28 * 3600 * 1000).toISOString(),
+        rejected_at: new Date(now - 27.9 * 3600 * 1000).toISOString(),
+        rejection_reason: 'Severe traffic bottleneck on Karve Road due to metro utility maintenance.',
+      },
+      {
+        id: 'assign-rej-003',
+        destination_id: 'dest-pune-sancheti',
+        driver_id: 'user-drv-002',
+        assigned_by: 'user-mgr-001',
+        urgency: 'normal',
+        category: 'red_blood_cell',
+        unit_count: 4,
+        notes: 'Routine blood replenishment consignment for trauma ICU.',
+        status: 'rejected',
+        assigned_at: new Date(now - 52 * 3600 * 1000).toISOString(),
+        rejected_at: new Date(now - 51.92 * 3600 * 1000).toISOString(),
+        rejection_reason: 'Shift ending / scheduled vehicle maintenance check.',
+      },
+    ];
+
+    for (const r of sampleRejections) {
+      const driverExists = dbGet("SELECT id FROM users WHERE id = ?", [r.driver_id]);
+      const destExists = dbGet("SELECT id FROM destinations WHERE id = ?", [r.destination_id]);
+      if (!driverExists || !destExists) continue;
+
+      dbRun(`
+        INSERT OR REPLACE INTO driver_assignments (
+          id, destination_id, driver_id, assigned_by, status,
+          urgency, category, unit_count, notes,
+          assigned_at, rejected_at, rejection_reason, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [
+        r.id, r.destination_id, r.driver_id, r.assigned_by, r.status,
+        r.urgency, r.category, r.unit_count, r.notes,
+        r.assigned_at, r.rejected_at, r.rejection_reason,
+      ]);
+    }
+    console.log(`  ✅ Seeded ${sampleRejections.length} sample rejected assignments.`);
   }
 
   console.log('✨ Seed check complete!');

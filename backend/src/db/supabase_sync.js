@@ -94,14 +94,16 @@ async function pullFromSupabase() {
     const aRes = await client.query('SELECT * FROM driver_assignments');
     for (const a of aRes.rows) {
       sqlite.run(
-        `INSERT OR REPLACE INTO driver_assignments (id, destination_id, driver_id, assigned_by, source_name, source_lat, source_lng, urgency, notes, category, unit_count, status, assigned_at, accepted_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO driver_assignments (id, destination_id, driver_id, assigned_by, source_name, source_lat, source_lng, urgency, notes, category, unit_count, status, assigned_at, accepted_at, completed_at, rejected_at, rejection_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           a.id, a.destination_id, a.driver_id, a.assigned_by, a.source_name, a.source_lat, a.source_lng,
           a.urgency, a.notes, a.category, a.unit_count, a.status,
           a.assigned_at ? new Date(a.assigned_at).toISOString() : null,
           a.accepted_at ? new Date(a.accepted_at).toISOString() : null,
-          a.completed_at ? new Date(a.completed_at).toISOString() : null
+          a.completed_at ? new Date(a.completed_at).toISOString() : null,
+          a.rejected_at ? new Date(a.rejected_at).toISOString() : null,
+          a.rejection_reason || null
         ]
       );
     }
@@ -217,13 +219,20 @@ async function pushToSupabase() {
     const assignments = sqlite.prepare('SELECT * FROM driver_assignments').all();
     for (const a of assignments) {
       await client.query(`
-        INSERT INTO driver_assignments (id, destination_id, driver_id, assigned_by, source_name, source_lat, source_lng, urgency, notes, category, unit_count, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        INSERT INTO driver_assignments (id, destination_id, driver_id, assigned_by, source_name, source_lat, source_lng, urgency, notes, category, unit_count, status, rejected_at, rejection_reason)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT (id) DO UPDATE SET
           status = EXCLUDED.status,
           category = EXCLUDED.category,
-          unit_count = EXCLUDED.unit_count
-      `, [a.id, a.destination_id, a.driver_id, a.assigned_by, a.source_name, a.source_lat, a.source_lng, a.urgency, a.notes, a.category, a.unit_count, a.status]);
+          unit_count = EXCLUDED.unit_count,
+          rejected_at = EXCLUDED.rejected_at,
+          rejection_reason = EXCLUDED.rejection_reason
+      `, [
+        a.id, a.destination_id, a.driver_id, a.assigned_by, a.source_name, a.source_lat, a.source_lng,
+        a.urgency, a.notes, a.category, a.unit_count, a.status,
+        a.rejected_at ? new Date(a.rejected_at) : null,
+        a.rejection_reason || null,
+      ]);
     }
 
     // 5. Work Logs
@@ -253,16 +262,20 @@ async function syncAssignment(assignment) {
   try {
     const p = getPool();
     await p.query(`
-      INSERT INTO driver_assignments (id, destination_id, driver_id, assigned_by, source_name, source_lat, source_lng, urgency, notes, category, unit_count, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      INSERT INTO driver_assignments (id, destination_id, driver_id, assigned_by, source_name, source_lat, source_lng, urgency, notes, category, unit_count, status, rejected_at, rejection_reason)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (id) DO UPDATE SET
         status = EXCLUDED.status,
         category = EXCLUDED.category,
-        unit_count = EXCLUDED.unit_count
+        unit_count = EXCLUDED.unit_count,
+        rejected_at = EXCLUDED.rejected_at,
+        rejection_reason = EXCLUDED.rejection_reason
     `, [
       assignment.id, assignment.destination_id, assignment.driver_id, assignment.assigned_by,
       assignment.source_name, assignment.source_lat, assignment.source_lng,
-      assignment.urgency, assignment.notes, assignment.category, assignment.unit_count, assignment.status
+      assignment.urgency, assignment.notes, assignment.category, assignment.unit_count, assignment.status,
+      assignment.rejected_at ? new Date(assignment.rejected_at) : null,
+      assignment.rejection_reason || null,
     ]);
   } catch (err) {
     console.warn('[Supabase Sync] syncAssignment error:', err.message);

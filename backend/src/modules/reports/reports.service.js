@@ -392,8 +392,243 @@ function getHospitalReport({ destinationId = 'all', period = 'last_30_days', sta
   };
 }
 
+/**
+ * Generate Declined / Rejected Requests Report
+ */
+function getRejectionsReport({
+  driverId = 'all',
+  destinationId = 'all',
+  urgency = 'all',
+  period = 'last_30_days',
+  startDate = null,
+  endDate = null,
+}) {
+  const { startIso, endIso } = resolveDateRange(period, startDate, endDate);
+
+  // List of active drivers for filtering dropdown
+  const driversList = dbAll(`
+    SELECT id, name, email, phone, avatar_color, vehicle_type, vehicle_number, is_active
+    FROM users
+    WHERE role = 'driver'
+    ORDER BY name ASC
+  `);
+
+  // List of active destinations for filtering dropdown
+  const hospitalsList = dbAll(`
+    SELECT id, name, address, lat, lng, radius_m, is_home
+    FROM destinations
+    WHERE is_home = 0
+    ORDER BY name ASC
+  `);
+
+  let targetDriver = null;
+  if (driverId && driverId !== 'all') {
+    targetDriver = dbGet(`
+      SELECT id, name, email, phone, avatar_color, vehicle_type, vehicle_number, is_active, created_at
+      FROM users
+      WHERE id = ? AND role = 'driver'
+    `, [driverId]);
+
+    if (!targetDriver) {
+      const err = new Error('Driver not found');
+      err.status = 404;
+      throw err;
+    }
+  }
+
+  let targetHospital = null;
+  if (destinationId && destinationId !== 'all') {
+    targetHospital = dbGet(`
+      SELECT id, name, address, lat, lng, radius_m, description, created_at
+      FROM destinations
+      WHERE id = ?
+    `, [destinationId]);
+
+    if (!targetHospital) {
+      const err = new Error('Hospital destination not found');
+      err.status = 404;
+      throw err;
+    }
+  }
+
+  // 1. Query all assignments in period (to calculate base dispatch volume & decline rate)
+  let allAssignSql = `
+    SELECT id, driver_id, destination_id, urgency, status, assigned_at
+    FROM driver_assignments
+    WHERE assigned_at >= ? AND assigned_at <= ?
+  `;
+  const allAssignParams = [startIso, endIso];
+  if (targetDriver) {
+    allAssignSql += ' AND driver_id = ?';
+    allAssignParams.push(targetDriver.id);
+  }
+  if (targetHospital) {
+    allAssignSql += ' AND destination_id = ?';
+    allAssignParams.push(targetHospital.id);
+  }
+  if (urgency && urgency !== 'all') {
+    allAssignSql += ' AND urgency = ?';
+    allAssignParams.push(urgency);
+  }
+  const allAssignments = dbAll(allAssignSql, allAssignParams);
+
+  // 2. Query rejected requests in period
+  let rejectionsSql = `
+    SELECT
+      da.id, da.destination_id, da.driver_id, da.assigned_by, da.status,
+      da.source_name, da.source_lat, da.source_lng, da.urgency, da.category, da.unit_count, da.notes,
+      da.assigned_at, da.accepted_at, da.completed_at, da.rejected_at, da.rejection_reason, da.updated_at,
+      COALESCE(da.rejected_at, da.updated_at, da.assigned_at) AS effective_rejected_at,
+      d.name AS destination_name, d.address AS destination_address,
+      u_driver.name AS driver_name, u_driver.email AS driver_email, u_driver.phone AS driver_phone,
+      u_driver.avatar_color AS driver_avatar, u_driver.vehicle_type, u_driver.vehicle_number,
+      u_mgr.name AS assigned_by_name, u_mgr.email AS assigned_by_email, u_mgr.role AS assigned_by_role
+    FROM driver_assignments da
+    JOIN destinations d ON d.id = da.destination_id
+    JOIN users u_driver ON u_driver.id = da.driver_id
+    JOIN users u_mgr ON u_mgr.id = da.assigned_by
+    WHERE da.status = 'rejected'
+      AND COALESCE(da.rejected_at, da.updated_at, da.assigned_at) >= ?
+      AND COALESCE(da.rejected_at, da.updated_at, da.assigned_at) <= ?
+  `;
+  const rejectionsParams = [startIso, endIso];
+  if (targetDriver) {
+    rejectionsSql += ' AND da.driver_id = ?';
+    rejectionsParams.push(targetDriver.id);
+  }
+  if (targetHospital) {
+    rejectionsSql += ' AND da.destination_id = ?';
+    rejectionsParams.push(targetHospital.id);
+  }
+  if (urgency && urgency !== 'all') {
+    rejectionsSql += ' AND da.urgency = ?';
+    rejectionsParams.push(urgency);
+  }
+  rejectionsSql += ' ORDER BY COALESCE(da.rejected_at, da.updated_at, da.assigned_at) DESC';
+  const rejections = dbAll(rejectionsSql, rejectionsParams);
+
+  // 3. Compute response turnaround lag for each rejection
+  let totalLagSeconds = 0;
+  for (const r of rejections) {
+    const assignedTime = new Date(r.assigned_at).getTime();
+    const rejectedTime = new Date(r.effective_rejected_at).getTime();
+    let lagSeconds = 0;
+    if (!isNaN(assignedTime) && !isNaN(rejectedTime) && rejectedTime >= assignedTime) {
+      lagSeconds = Math.round((rejectedTime - assignedTime) / 1000);
+    }
+    const lagMins = Math.round((lagSeconds / 60) * 10) / 10;
+
+    let responseLagFormatted = '';
+    if (lagSeconds < 60) {
+      responseLagFormatted = `${lagSeconds}s`;
+    } else if (lagMins < 60) {
+      const mins = Math.floor(lagSeconds / 60);
+      const secs = lagSeconds % 60;
+      responseLagFormatted = `${mins}m ${secs}s`;
+    } else {
+      const hours = Math.floor(lagMins / 60);
+      const mins = Math.round(lagMins % 60);
+      responseLagFormatted = `${hours}h ${mins}m`;
+    }
+
+    r.response_lag_seconds = lagSeconds;
+    r.response_lag_mins = lagMins;
+    r.response_lag_formatted = responseLagFormatted;
+    r.rejection_reason = r.rejection_reason || 'Driver declined request';
+    totalLagSeconds += lagSeconds;
+  }
+
+  // 4. Summary KPIs
+  const totalRejected = rejections.length;
+  const totalAssigned = allAssignments.length;
+  const emergencyCount = rejections.filter(r => r.urgency === 'emergency').length;
+  const urgentCount = rejections.filter(r => r.urgency === 'urgent').length;
+  const normalCount = rejections.filter(r => r.urgency === 'normal' || !r.urgency).length;
+  const emergencySharePercent = totalRejected > 0 ? Math.round((emergencyCount / totalRejected) * 100) : 0;
+  const overallDeclineRate = totalAssigned > 0 ? Math.round((totalRejected / totalAssigned) * 100) : 0;
+  const avgLagSeconds = totalRejected > 0 ? Math.round(totalLagSeconds / totalRejected) : 0;
+  const avgLagMins = Math.round((avgLagSeconds / 60) * 10) / 10;
+
+  let avgLagFormatted = '0s';
+  if (avgLagSeconds < 60) {
+    avgLagFormatted = `${avgLagSeconds}s`;
+  } else if (avgLagMins < 60) {
+    avgLagFormatted = `${Math.floor(avgLagSeconds / 60)}m ${avgLagSeconds % 60}s`;
+  } else {
+    avgLagFormatted = `${Math.floor(avgLagMins / 60)}h ${Math.round(avgLagMins % 60)}m`;
+  }
+
+  const uniqueDriversDeclined = new Set(rejections.map(r => r.driver_id)).size;
+
+  // 5. Driver Comparison Breakdown
+  const driverBreakdowns = [];
+  for (const d of driversList) {
+    const dAssigned = allAssignments.filter(a => a.driver_id === d.id);
+    const dRejections = rejections.filter(r => r.driver_id === d.id);
+    const dEmergency = dRejections.filter(r => r.urgency === 'emergency').length;
+    const dUrgent = dRejections.filter(r => r.urgency === 'urgent').length;
+    const dNormal = dRejections.filter(r => r.urgency === 'normal' || !r.urgency).length;
+    const dLagSum = dRejections.reduce((acc, r) => acc + (r.response_lag_seconds || 0), 0);
+    const dAvgLagSec = dRejections.length > 0 ? Math.round(dLagSum / dRejections.length) : 0;
+    const dAvgLagMin = Math.round((dAvgLagSec / 60) * 10) / 10;
+    const dDeclineRate = dAssigned.length > 0 ? Math.round((dRejections.length / dAssigned.length) * 100) : 0;
+
+    driverBreakdowns.push({
+      id: d.id,
+      name: d.name,
+      email: d.email,
+      phone: d.phone,
+      vehicle_type: d.vehicle_type || 'two_wheeler',
+      vehicle_number: d.vehicle_number || null,
+      avatar_color: d.avatar_color,
+      total_assigned: dAssigned.length,
+      rejected_count: dRejections.length,
+      emergency_count: dEmergency,
+      urgent_count: dUrgent,
+      normal_count: dNormal,
+      decline_rate: dDeclineRate,
+      avg_lag_seconds: dAvgLagSec,
+      avg_lag_mins: dAvgLagMin,
+      avg_lag_formatted: dAvgLagSec < 60 ? `${dAvgLagSec}s` : `${Math.floor(dAvgLagSec / 60)}m ${dAvgLagSec % 60}s`,
+    });
+  }
+
+  // Sort by highest rejections first
+  driverBreakdowns.sort((a, b) => b.rejected_count - a.rejected_count || b.decline_rate - a.decline_rate);
+
+  const topDecliningDriver = driverBreakdowns.find(d => d.rejected_count > 0) || null;
+
+  return {
+    period,
+    startDate: startIso,
+    endDate: endIso,
+    targetDriver,
+    targetHospital,
+    driversList,
+    hospitalsList,
+    summary: {
+      total_rejected: totalRejected,
+      total_assigned: totalAssigned,
+      overall_decline_rate: overallDeclineRate,
+      emergency_count: emergencyCount,
+      urgent_count: urgentCount,
+      normal_count: normalCount,
+      emergency_share_percent: emergencySharePercent,
+      avg_lag_seconds: avgLagSeconds,
+      avg_lag_mins: avgLagMins,
+      avg_lag_formatted: avgLagFormatted,
+      unique_drivers_declined: uniqueDriversDeclined,
+      total_drivers_count: driversList.length,
+      top_declining_driver: topDecliningDriver,
+    },
+    driverBreakdowns: !targetDriver ? driverBreakdowns : null,
+    rejections,
+  };
+}
+
 module.exports = {
   resolveDateRange,
   getDriverReport,
   getHospitalReport,
+  getRejectionsReport,
 };

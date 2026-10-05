@@ -50,15 +50,20 @@ export async function getHomeLocation(serverUrl, token) {
   }
 }
 
-export async function respondToAssignment(serverUrl, token, assignmentId, status) {
+export async function respondToAssignment(serverUrl, token, assignmentId, status, rejectionReason = null) {
   const url = `${serverUrl.replace(/\/+$/, '')}/api/assignments/${assignmentId}/status`;
+  const bodyPayload = { status };
+  if (rejectionReason) {
+    bodyPayload.rejection_reason = rejectionReason;
+  }
+
   const response = await fetch(url, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(bodyPayload),
   });
 
   const data = await response.json();

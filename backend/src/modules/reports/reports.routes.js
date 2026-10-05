@@ -11,6 +11,8 @@ router.use(requireRole('manager', 'admin'));
 
 router.get('/driver', controller.getDriverReport);
 router.get('/hospital', controller.getHospitalReport);
+router.get('/rejections', controller.getRejectionsReport);
+router.get('/declined', controller.getRejectionsReport);
 router.get('/export/csv', controller.exportCSV);
 
 module.exports = router;

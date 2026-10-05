@@ -24,6 +24,7 @@ export default function TaskNotificationModal({
   onClose,
 }) {
   const [responding, setResponding] = useState(false);
+  const [showDeclineReasons, setShowDeclineReasons] = useState(false);
 
   if (!visible || !assignment) return null;
 
@@ -52,17 +53,18 @@ export default function TaskNotificationModal({
     distanceKm = (R * c).toFixed(1);
   }
 
-  const handleResponse = async (status) => {
+  const handleResponse = async (status, rejectionReason = null) => {
     setResponding(true);
     try {
       // 1. Send via REST (which broadcasts socket events server-side)
-      await respondToAssignment(serverUrl, token, assignment.id, status);
+      await respondToAssignment(serverUrl, token, assignment.id, status, rejectionReason);
 
       if (status === 'accepted') {
         onAccepted?.(assignment);
       } else {
         onRejected?.(assignment);
       }
+      setShowDeclineReasons(false);
       onClose?.();
     } catch (err) {
       alert(err.message || 'Failed to update task response');
@@ -196,27 +198,74 @@ export default function TaskNotificationModal({
           {/* Action Buttons */}
           <View style={styles.actions}>
             {assignment.status === 'pending' ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.button, styles.rejectButton]}
-                  onPress={() => handleResponse('rejected')}
-                  disabled={responding}
-                >
-                  <Text style={styles.rejectButtonText}>Decline</Text>
-                </TouchableOpacity>
+              showDeclineReasons ? (
+                <View style={{ width: '100%', gap: 8 }}>
+                  <Text style={{ color: '#f87171', fontSize: 12, fontWeight: '700', marginBottom: 2 }}>
+                    SELECT REASON FOR DECLINING:
+                  </Text>
+                  {[
+                    'Vehicle breakdown / mechanical issue',
+                    'Heavy traffic / route blocked',
+                    'Off duty / shift completed',
+                    'Handling another emergency consignment',
+                    'Quick Decline (No specific reason)',
+                  ].map((reasonOption, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(239, 68, 68, 0.35)',
+                        paddingVertical: 9,
+                        paddingHorizontal: 12,
+                        borderRadius: 8,
+                      }}
+                      onPress={() => handleResponse('rejected', reasonOption)}
+                      disabled={responding}
+                    >
+                      <Text style={{ color: '#fca5a5', fontSize: 12.5, fontWeight: '600' }}>
+                        • {reasonOption}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
 
-                <TouchableOpacity
-                  style={[styles.button, styles.acceptButton]}
-                  onPress={() => handleResponse('accepted')}
-                  disabled={responding}
-                >
-                  {responding ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.acceptButtonText}>✓ Accept Delivery</Text>
-                  )}
-                </TouchableOpacity>
-              </>
+                  <TouchableOpacity
+                    style={{
+                      alignSelf: 'center',
+                      paddingVertical: 6,
+                      marginTop: 4,
+                    }}
+                    onPress={() => setShowDeclineReasons(false)}
+                    disabled={responding}
+                  >
+                    <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '700' }}>
+                      ← Cancel / Back
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={[styles.button, styles.rejectButton]}
+                    onPress={() => setShowDeclineReasons(true)}
+                    disabled={responding}
+                  >
+                    <Text style={styles.rejectButtonText}>Decline</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.button, styles.acceptButton]}
+                    onPress={() => handleResponse('accepted')}
+                    disabled={responding}
+                  >
+                    {responding ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.acceptButtonText}>✓ Accept Delivery</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )
             ) : (
               <>
                 <TouchableOpacity

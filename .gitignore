@@ -22,3 +22,5 @@ delivery_tracking_system.zip
 !backend/public/downloads/*.zip
 *.apk
 !backend/public/downloads/*.apk
+*.idsig
+scratch/

@@ -10,7 +10,7 @@ function getAssignmentById(id) {
     SELECT
       da.id, da.destination_id, da.driver_id, da.assigned_by, da.status,
       da.source_name, da.source_lat, da.source_lng, da.urgency, da.category, da.unit_count, da.notes,
-      da.assigned_at, da.accepted_at, da.completed_at, da.updated_at,
+      da.assigned_at, da.accepted_at, da.completed_at, da.rejected_at, da.rejection_reason, da.updated_at,
       d.name AS destination_name, d.address AS destination_address,
       d.lat AS destination_lat, d.lng AS destination_lng, d.radius_m AS destination_radius_m,
       d.description AS destination_description,
@@ -42,7 +42,7 @@ function getAllAssignments({ status, driver_id, destination_id, limit = 50 } = {
     SELECT
       da.id, da.destination_id, da.driver_id, da.assigned_by, da.status,
       da.source_name, da.source_lat, da.source_lng, da.urgency, da.category, da.unit_count, da.notes,
-      da.assigned_at, da.accepted_at, da.completed_at, da.updated_at,
+      da.assigned_at, da.accepted_at, da.completed_at, da.rejected_at, da.rejection_reason, da.updated_at,
       d.name AS destination_name, d.address AS destination_address,
       d.lat AS destination_lat, d.lng AS destination_lng, d.radius_m AS destination_radius_m,
       u_driver.name AS driver_name, u_driver.email AS driver_email, u_driver.phone AS driver_phone,
@@ -83,7 +83,7 @@ function getActiveAssignmentForDriver(driverId) {
     SELECT
       da.id, da.destination_id, da.driver_id, da.assigned_by, da.status,
       da.source_name, da.source_lat, da.source_lng, da.urgency, da.category, da.unit_count, da.notes,
-      da.assigned_at, da.accepted_at, da.completed_at, da.updated_at,
+      da.assigned_at, da.accepted_at, da.completed_at, da.rejected_at, da.rejection_reason, da.updated_at,
       d.name AS destination_name, d.address AS destination_address,
       d.lat AS destination_lat, d.lng AS destination_lng, d.radius_m AS destination_radius_m,
       d.description AS destination_description,
@@ -201,7 +201,7 @@ function updateAssignmentDetails(id, { urgency, category, unit_count, notes, dri
 /**
  * Update status of an assignment.
  */
-function updateAssignmentStatus(id, newStatus, userId, userRole) {
+function updateAssignmentStatus(id, newStatus, userId, userRole, rejectionReason = null) {
   const valid = ['pending', 'accepted', 'rejected', 'in_progress', 'completed', 'cancelled'];
   if (!valid.includes(newStatus)) {
     const err = new Error(`Invalid status. Must be one of: ${valid.join(', ')}`);
@@ -228,6 +228,8 @@ function updateAssignmentStatus(id, newStatus, userId, userRole) {
 
   let acceptedAtUpdate = assignment.accepted_at;
   let completedAtUpdate = assignment.completed_at;
+  let rejectedAtUpdate = assignment.rejected_at;
+  let rejectionReasonUpdate = assignment.rejection_reason;
 
   if (newStatus === 'accepted' && !assignment.accepted_at) {
     acceptedAtUpdate = new Date().toISOString();
@@ -235,16 +237,26 @@ function updateAssignmentStatus(id, newStatus, userId, userRole) {
   if (newStatus === 'completed' && !assignment.completed_at) {
     completedAtUpdate = new Date().toISOString();
   }
+  if (newStatus === 'rejected') {
+    rejectedAtUpdate = new Date().toISOString();
+    if (rejectionReason && typeof rejectionReason === 'string' && rejectionReason.trim()) {
+      rejectionReasonUpdate = rejectionReason.trim();
+    } else if (!rejectionReasonUpdate) {
+      rejectionReasonUpdate = 'Driver declined request';
+    }
+  }
 
-  if (isStatusChanged) {
+  if (isStatusChanged || (newStatus === 'rejected' && rejectionReason)) {
     dbRun(`
       UPDATE driver_assignments SET
         status = ?,
         accepted_at = ?,
         completed_at = ?,
+        rejected_at = ?,
+        rejection_reason = ?,
         updated_at = datetime('now')
       WHERE id = ?
-    `, [newStatus, acceptedAtUpdate, completedAtUpdate, id]);
+    `, [newStatus, acceptedAtUpdate, completedAtUpdate, rejectedAtUpdate, rejectionReasonUpdate, id]);
   }
 
   const updated = getAssignmentById(id);

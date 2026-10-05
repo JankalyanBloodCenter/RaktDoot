@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   FileText, Calendar, RefreshCw,
   Users, Building2, ChevronDown, Check, ArrowDownToLine,
-  Filter, Sparkles
+  Filter, Sparkles, XCircle, AlertTriangle
 } from 'lucide-react';
 import api, { API_URL } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -11,6 +11,7 @@ import LanguageToggle from '../components/common/LanguageToggle';
 import harbingerLogo from '../assets/harbinger_logo_actual.png';
 import DriverReportView from '../components/reports/DriverReportView';
 import HospitalReportView from '../components/reports/HospitalReportView';
+import RejectionsReportView from '../components/reports/RejectionsReportView';
 
 const PERIODS = [
   { id: 'today', labelKey: 'today', defaultLabel: 'Today' },
@@ -25,10 +26,11 @@ export default function ReportsPage() {
   const { t } = useLanguage();
   const { token } = useAuth();
 
-  const [activeTab, setActiveTab] = useState('driver'); // 'driver' | 'hospital'
+  const [activeTab, setActiveTab] = useState('driver'); // 'driver' | 'hospital' | 'rejections'
   const [period, setPeriod] = useState('last_30_days');
   const [selectedDriverId, setSelectedDriverId] = useState('all');
   const [selectedHospitalId, setSelectedHospitalId] = useState('all');
+  const [selectedUrgency, setSelectedUrgency] = useState('all');
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const thirtyDaysAgoStr = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
@@ -37,6 +39,7 @@ export default function ReportsPage() {
 
   const [driverReportData, setDriverReportData] = useState(null);
   const [hospitalReportData, setHospitalReportData] = useState(null);
+  const [rejectionsReportData, setRejectionsReportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -59,7 +62,7 @@ export default function ReportsPage() {
         if (res.data?.success) {
           setDriverReportData(res.data.data);
         }
-      } else {
+      } else if (activeTab === 'hospital') {
         const params = {
           destinationId: selectedHospitalId,
           period,
@@ -72,13 +75,28 @@ export default function ReportsPage() {
         if (res.data?.success) {
           setHospitalReportData(res.data.data);
         }
+      } else if (activeTab === 'rejections') {
+        const params = {
+          driverId: selectedDriverId,
+          destinationId: selectedHospitalId,
+          urgency: selectedUrgency,
+          period,
+        };
+        if (period === 'custom') {
+          params.startDate = customStart;
+          params.endDate = customEnd;
+        }
+        const res = await api.get('/reports/rejections', { params });
+        if (res.data?.success) {
+          setRejectionsReportData(res.data.data);
+        }
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load report data.');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, period, selectedDriverId, selectedHospitalId, customStart, customEnd]);
+  }, [activeTab, period, selectedDriverId, selectedHospitalId, selectedUrgency, customStart, customEnd]);
 
   useEffect(() => {
     loadReport();
@@ -87,12 +105,13 @@ export default function ReportsPage() {
   // Export CSV Handler
   const handleDownloadCSV = () => {
     const targetType = activeTab;
-    const targetId = activeTab === 'driver' ? selectedDriverId : selectedHospitalId;
     let url = `${API_URL}/api/reports/export/csv?type=${targetType}&period=${period}`;
     if (activeTab === 'driver') {
-      url += `&driverId=${targetId}`;
-    } else {
-      url += `&destinationId=${targetId}`;
+      url += `&driverId=${selectedDriverId}`;
+    } else if (activeTab === 'hospital') {
+      url += `&destinationId=${selectedHospitalId}`;
+    } else if (activeTab === 'rejections') {
+      url += `&driverId=${selectedDriverId}&destinationId=${selectedHospitalId}&urgency=${selectedUrgency}`;
     }
     if (period === 'custom') {
       url += `&startDate=${customStart}&endDate=${customEnd}`;
@@ -120,8 +139,8 @@ export default function ReportsPage() {
       });
   };
 
-  const driversList = driverReportData?.driversList || [];
-  const hospitalsList = hospitalReportData?.hospitalsList || [];
+  const driversList = rejectionsReportData?.driversList || driverReportData?.driversList || [];
+  const hospitalsList = rejectionsReportData?.hospitalsList || hospitalReportData?.hospitalsList || [];
 
   return (
     <div className="page-content-full reports-page-container">
@@ -131,7 +150,7 @@ export default function ReportsPage() {
           <FileText size={18} style={{ color: 'var(--color-primary)' }} />
           <div>
             <div className="topbar-title">{t.reports || 'Reports & Analytics'}</div>
-            <div className="topbar-subtitle">{t.reportsSubtitle || 'Driver analytics and hospital delivery reports'}</div>
+            <div className="topbar-subtitle">{t.reportsSubtitle || 'Driver analytics, hospital delivery, and task rejection reports'}</div>
           </div>
         </div>
 
@@ -192,6 +211,23 @@ export default function ReportsPage() {
               <Building2 size={15} />
               <span>{t.hospitalDeliveryReport || 'Hospital Delivery Report'}</span>
             </button>
+
+            <button
+              id="tab-rejections-report"
+              className={`btn ${activeTab === 'rejections' ? 'btn-danger' : 'btn-ghost'}`}
+              onClick={() => setActiveTab('rejections')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: activeTab === 'rejections' ? '#b91c1c' : undefined,
+                color: activeTab === 'rejections' ? '#ffffff' : '#f87171',
+                borderColor: activeTab === 'rejections' ? '#ef4444' : 'rgba(239, 68, 68, 0.3)',
+              }}
+            >
+              <XCircle size={15} style={{ color: activeTab === 'rejections' ? '#ffffff' : '#ef4444' }} />
+              <span>{t.rejectionsReport || 'Declined & Rejected Requests'}</span>
+            </button>
           </div>
 
           {/* Export Action Button - CSV Only */}
@@ -241,18 +277,17 @@ export default function ReportsPage() {
           borderRadius: 12,
           border: '1px solid var(--border-subtle)',
         }}>
-          {/* 1. Target Selector (Driver vs Hospital) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              {activeTab === 'driver' ? 'Driver:' : 'Hospital:'}
-            </span>
-
-            {activeTab === 'driver' ? (
+          {/* Driver Selector */}
+          {(activeTab === 'driver' || activeTab === 'rejections') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Filter size={14} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Driver:
+              </span>
               <select
                 id="select-driver-filter"
                 className="select"
-                style={{ width: 220, fontSize: 12.5 }}
+                style={{ width: 200, fontSize: 12.5 }}
                 value={selectedDriverId}
                 onChange={(e) => setSelectedDriverId(e.target.value)}
               >
@@ -263,11 +298,20 @@ export default function ReportsPage() {
                   </option>
                 ))}
               </select>
-            ) : (
+            </div>
+          )}
+
+          {/* Hospital Selector */}
+          {(activeTab === 'hospital' || activeTab === 'rejections') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Filter size={14} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Hospital:
+              </span>
               <select
                 id="select-hospital-filter"
                 className="select"
-                style={{ width: 240, fontSize: 12.5 }}
+                style={{ width: 220, fontSize: 12.5 }}
                 value={selectedHospitalId}
                 onChange={(e) => setSelectedHospitalId(e.target.value)}
               >
@@ -278,10 +322,32 @@ export default function ReportsPage() {
                   </option>
                 ))}
               </select>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* 2. Duration Preset Selector */}
+          {/* Urgency Selector (on Rejections tab) */}
+          {activeTab === 'rejections' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={14} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Urgency:
+              </span>
+              <select
+                id="select-urgency-filter"
+                className="select"
+                style={{ width: 140, fontSize: 12.5 }}
+                value={selectedUrgency}
+                onChange={(e) => setSelectedUrgency(e.target.value)}
+              >
+                <option value="all">{t.allUrgencies || 'All Urgencies'}</option>
+                <option value="emergency">🚨 Emergency STAT</option>
+                <option value="urgent">⚠️ Urgent</option>
+                <option value="normal">Normal Routine</option>
+              </select>
+            </div>
+          )}
+
+          {/* Duration Preset Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
@@ -302,7 +368,7 @@ export default function ReportsPage() {
             </select>
           </div>
 
-          {/* 3. Custom Date Range Inputs */}
+          {/* Custom Date Range Inputs */}
           {period === 'custom' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input
@@ -323,7 +389,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* 4. Refresh Button */}
+          {/* Refresh Button */}
           <button
             id="btn-refresh-report"
             className="btn btn-ghost btn-sm"
@@ -344,10 +410,14 @@ export default function ReportsPage() {
         )}
 
         {/* Main Content View */}
-        {activeTab === 'driver' ? (
+        {activeTab === 'driver' && (
           <DriverReportView data={driverReportData} loading={loading} />
-        ) : (
+        )}
+        {activeTab === 'hospital' && (
           <HospitalReportView data={hospitalReportData} loading={loading} />
+        )}
+        {activeTab === 'rejections' && (
+          <RejectionsReportView data={rejectionsReportData} loading={loading} />
         )}
       </div>
     </div>

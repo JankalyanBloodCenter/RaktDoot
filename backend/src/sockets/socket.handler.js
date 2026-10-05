@@ -315,14 +315,29 @@ function initSocket(httpServer) {
     // ── DRIVER → TASK RESPONSE (Accept / Reject / Complete) ──────────────────
     socket.on('task_response', (data) => {
       if (user.role !== 'driver') return;
-      const { assignment_id, status } = data;
+      const { assignment_id, status, rejection_reason, reason } = data;
       if (!assignment_id || !status) return;
 
       try {
-        const updated = updateAssignmentStatus(assignment_id, status, user.id, 'driver');
+        const effectiveReason = rejection_reason || reason || null;
+        const updated = updateAssignmentStatus(assignment_id, status, user.id, 'driver', effectiveReason);
         io.to('fleet-monitors').emit('assignment_status_changed', { assignment: updated });
         io.to('fleet-monitors').emit('request_status_updated', { assignment: updated });
         io.to(`driver:${updated.driver_id}`).emit('assignment_status_changed', { assignment: updated });
+
+        if (status === 'rejected') {
+          const reasonSuffix = updated.rejection_reason ? ` (Reason: ${updated.rejection_reason})` : '';
+          io.to('fleet-monitors').emit('request_rejected_alert', {
+            assignment_id: updated.id,
+            driver_id: updated.driver_id,
+            driver_name: updated.driver_name,
+            destination_id: updated.destination_id,
+            destination_name: updated.destination_name,
+            rejection_reason: updated.rejection_reason,
+            rejected_at: updated.rejected_at,
+            message: `Driver ${updated.driver_name} rejected the collection request for ${updated.destination_name}${reasonSuffix}.`,
+          });
+        }
       } catch (err) {
         console.error('[Socket] ❌ Error handling task_response:', err.message);
       }

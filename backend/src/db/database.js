@@ -43,6 +43,8 @@ function initDB() {
   try { db.run('ALTER TABLE driver_assignments ADD COLUMN notes TEXT'); } catch (_) {}
   try { db.run('ALTER TABLE driver_assignments ADD COLUMN category TEXT DEFAULT "red_blood_cell"'); } catch (_) {}
   try { db.run('ALTER TABLE driver_assignments ADD COLUMN unit_count INTEGER DEFAULT 1'); } catch (_) {}
+  try { db.run('ALTER TABLE driver_assignments ADD COLUMN rejected_at TEXT'); } catch (_) {}
+  try { db.run('ALTER TABLE driver_assignments ADD COLUMN rejection_reason TEXT'); } catch (_) {}
   try { db.run('ALTER TABLE users ADD COLUMN push_token TEXT'); } catch (_) {}
   try { db.run('ALTER TABLE users ADD COLUMN vehicle_type TEXT DEFAULT "two_wheeler"'); } catch (_) {}
   try { db.run('ALTER TABLE users ADD COLUMN vehicle_number TEXT'); } catch (_) {}

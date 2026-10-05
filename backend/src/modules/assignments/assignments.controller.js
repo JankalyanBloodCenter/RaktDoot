@@ -111,16 +111,19 @@ function createAssignment(req, res, next) {
 
 function updateAssignmentStatus(req, res, next) {
   try {
-    const { status } = req.body;
+    const { status, rejection_reason, reason } = req.body;
     if (!status) {
       return res.status(400).json({ success: false, message: 'status is required' });
     }
+
+    const effectiveReason = rejection_reason || reason || null;
 
     const assignment = assignmentsService.updateAssignmentStatus(
       req.params.id,
       status,
       req.user.id,
-      req.user.role
+      req.user.role,
+      effectiveReason
     );
 
     try {
@@ -133,13 +136,14 @@ function updateAssignmentStatus(req, res, next) {
       if (assignment._statusChanged) {
         // ── DRIVER REJECTED REQUEST: NOTIFY MANAGER ──
         if (status === 'rejected') {
+          const reasonSuffix = assignment.rejection_reason ? ` (Reason: ${assignment.rejection_reason})` : '';
           const notif = notificationsService.createGeofenceNotification({
             manager_id: assignment.assigned_by || 'user-mgr-001',
             driver_id: assignment.driver_id,
             destination_id: assignment.destination_id,
             assignment_id: assignment.id,
             type: 'request_rejected',
-            message: `DECLINED: Driver ${assignment.driver_name} rejected the collection request for ${assignment.destination_name}. Please reassign to another driver.`,
+            message: `DECLINED: Driver ${assignment.driver_name} rejected the collection request for ${assignment.destination_name}${reasonSuffix}. Please reassign to another driver.`,
             distance_m: 0,
           });
 
@@ -150,7 +154,9 @@ function updateAssignmentStatus(req, res, next) {
             driver_name: assignment.driver_name,
             destination_id: assignment.destination_id,
             destination_name: assignment.destination_name,
-            message: `Driver ${assignment.driver_name} rejected the collection request for ${assignment.destination_name}.`,
+            rejection_reason: assignment.rejection_reason,
+            rejected_at: assignment.rejected_at,
+            message: `Driver ${assignment.driver_name} rejected the collection request for ${assignment.destination_name}${reasonSuffix}.`,
           });
         }
 
